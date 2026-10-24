@@ -1,0 +1,16 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.worldchanger.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "ServerLevelMixin",
+    "AttachmentHolderMixin",
+    "GameRuleCommandMixin",
+    "EntitySelectorMixin",
+    "SetWorldSpawnCommandMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

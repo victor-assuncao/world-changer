@@ -1,0 +1,29 @@
+# Gradle e artefatos de compilacao
+.gradle/
+.gradle-user/
+build/
+out/
+src/generated/
+
+# Servidor local de desenvolvimento: mundos, mods, configs, logs e dados
+/run/
+/work/
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+
+# Arquivos locais do sistema operacional
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Logs e arquivos temporarios locais
+*.log
+*.tmp
+*.bak
+hs_err_pid*.log
