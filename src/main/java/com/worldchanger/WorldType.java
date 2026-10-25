@@ -45,9 +45,11 @@ public enum WorldType {
                 return new FlatLevelSource(settings);
             }
             default: {
-                // O proprio gerador do overworld e a referencia mais fiel ao
-                // comportamento vanilla da versao em execucao.
-                return server.overworld().getChunkSource().getGenerator();
+                // Separate generator instances keep their mutable caches independent.
+                return new NoiseBasedChunkGenerator(
+                        MultiNoiseBiomeSource.createFromPreset(access.lookupOrThrow(Registries.MULTI_NOISE_BIOME_SOURCE_PARAMETER_LIST)
+                                .getOrThrow(MultiNoiseBiomeSourceParameterLists.OVERWORLD)),
+                        access.lookupOrThrow(Registries.NOISE_SETTINGS).getOrThrow(NoiseGeneratorSettings.OVERWORLD));
             }
         }
     }

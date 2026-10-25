@@ -70,6 +70,7 @@ public final class WorldManager {
     public static class Entry {
         public String name;
         public String type;
+        public Long seed;
         public boolean pendingDeletion;
         public boolean pendingImport;
         public Entry(String name, String type) { this(name, type, false); }
@@ -479,6 +480,11 @@ public final class WorldManager {
             List<Entry> list = GSON.fromJson(r, LIST_TYPE);
             if (list == null) return;
             for (Entry e : list) {
+                if (e.seed == null && !"IMPORTED".equals(e.type)) {
+                    // Keep terrain continuity for worlds created by older versions.
+                    e.seed = server.getWorldData().worldGenOptions().seed();
+                    writeEntriesAtomically(server, list);
+                }
                 if (e.pendingImport) e.pendingDeletion = true;
                 if (e.pendingDeletion) {
                     try {
@@ -518,17 +524,25 @@ public final class WorldManager {
         }
     }
 
-    public static void create(MinecraftServer server, String name, WorldType type) {
+    public static void create(MinecraftServer server, String name, WorldType type) throws IOException {
+        create(server, name, type, net.minecraft.util.RandomSource.create().nextLong());
+    }
+
+    public static void create(MinecraftServer server, String name, WorldType type, long seed) throws IOException {
         if (!name.matches("[a-z0-9_-]{1,32}")) {
             throw new IllegalArgumentException("Nome invalido: use apenas letras minusculas, numeros, _ e - (max 32).");
         }
         if (name.equals("overworld") || ENTRIES.containsKey(name) || Files.exists(importedPath(server, name))) {
             throw new IllegalArgumentException("Ja existe um mundo com esse nome ou a exclusao anterior ainda esta pendente.");
         }
-        ServerLevel level = createLevel(server, name, type);
-        ENTRIES.put(name, new Entry(name, type.name()));
-        LEVELS.put(name, level);
-        saveAll(server);
+        Entry entry = new Entry(name, type.name());
+        entry.seed = seed;
+        List<Entry> transaction = new ArrayList<>(ENTRIES.values());
+        transaction.add(entry);
+        // Persist before generating chunks, including when startup is interrupted.
+        writeEntriesAtomically(server, transaction);
+        ENTRIES.put(name, entry);
+        LEVELS.put(name, createRegisteredLevel(server, entry));
     }
 
     private static Path importedPath(MinecraftServer server, String name) {
@@ -635,6 +649,7 @@ public final class WorldManager {
         server.markWorldsDirty();
 
         Entry pendingEntry = new Entry(name, entry.type, true);
+        pendingEntry.seed = entry.seed;
         List<Entry> entriesWithPendingDeletion = new ArrayList<>();
         for (Entry existing : ENTRIES.values()) {
             entriesWithPendingDeletion.add(existing.name.equals(name) ? pendingEntry : existing);
@@ -775,13 +790,9 @@ public final class WorldManager {
     private static ServerLevel createLevel(MinecraftServer server, String name, WorldType type, WorldImport.Settings imported) {
         ResourceKey<Level> key = ResourceKey.create(Registries.DIMENSION,
                 ResourceLocation.fromNamespaceAndPath(WorldChanger.MOD_ID, name));
-        ServerLevel overworld = server.overworld();
-
         Holder<DimensionType> dimType = server.registryAccess()
                 .lookupOrThrow(Registries.DIMENSION_TYPE).getOrThrow(BuiltinDimensionTypes.OVERWORLD);
-        // Para o tipo NORMAL, reutilizamos a mesma configuracao de geracao do
-        // overworld vanilla. Isso evita divergir de futuras alteracoes do
-        // preset vanilla (biomas, ruido e estruturas).
+        // Created worlds use vanilla presets; imported worlds keep their decoded generator.
         LevelStem stem = imported == null ? new LevelStem(dimType, type.createGenerator(server)) : imported.stem();
 
         // Em 1.21.1 GameRules nao recebe FeatureFlagSet no construtor.
@@ -802,21 +813,24 @@ public final class WorldManager {
         }
         loadWorldState(server, name, data);
 
-        long seed = imported == null ? server.getWorldData().worldGenOptions().seed() : imported.options().seed();
+        long seed = imported == null ? ENTRIES.get(name).seed : imported.options().seed();
+        var options = imported == null
+                ? new net.minecraft.world.level.levelgen.WorldOptions(seed,
+                        server.getWorldData().worldGenOptions().generateStructures(), false)
+                : imported.options();
         List<CustomSpawner> spawners = type == WorldType.NORMAL
                 ? ImmutableList.of(new PhantomSpawner(), new PatrolSpawner(), new CatSpawner(),
                         new VillageSiege(), new WanderingTraderSpawner(data))
                 : ImmutableList.of();
 
         ServerLevel level;
-        if (imported != null) WorldImport.CONSTRUCTING.set(imported.options());
+        WorldImport.CONSTRUCTING.set(options);
         try {
-        level = new ServerLevel(server, Util.backgroundExecutor(), server.storageSource, data, key, stem,
-                new NoopListener(), false, BiomeManager.obfuscateSeed(seed), spawners, true,
-                imported == null ? overworld.getRandomSequences() : null);
+            level = new ServerLevel(server, Util.backgroundExecutor(), server.storageSource, data, key, stem,
+                    new NoopListener(), false, BiomeManager.obfuscateSeed(seed), spawners, true, null);
         } finally { WorldImport.CONSTRUCTING.remove(); }
 
-        if (imported != null) IMPORT_OPTIONS.put(key.location().toString(), imported.options());
+        IMPORT_OPTIONS.put(key.location().toString(), options);
         server.levels.put(key, level);
         // MinecraftServer usa um array em cache para percorrer os mundos no
         // tick. Sem invalidar o cache, o level criado em runtime nao recebe

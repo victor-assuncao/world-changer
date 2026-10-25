@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
 import net.minecraft.nbt.*;
 import net.minecraft.resources.RegistryOps;
@@ -91,16 +92,28 @@ public final class WorldImport {
              FileLock lock = channel.tryLock()) {
             if (lock == null) throw new IOException("Mundo de origem em uso. Pare o servidor de origem ou use um backup consistente.");
             read(server, real);
-            try (var paths = Files.walk(real)) {
-                for (Path path : paths.toList()) {
+            Files.walkFileTree(real, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult preVisitDirectory(Path path, BasicFileAttributes attributes) throws IOException {
+                    // Only the source overworld is registered. Do not traverse vanilla dimension saves.
+                    if (real.equals(path.getParent())
+                            && Set.of("DIM-1", "DIM1").contains(path.getFileName().toString())) {
+                        return FileVisitResult.SKIP_SUBTREE;
+                    }
+                    Files.createDirectories(target.resolve(real.relativize(path)));
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFile(Path path, BasicFileAttributes attributes) throws IOException {
                     if (Files.isSymbolicLink(path)) throw new IOException("Links simbolicos nao sao aceitos: " + path);
                     Path relative = real.relativize(path);
-                    if (relative.toString().equals("session.lock")) continue;
-                    Path destination = target.resolve(relative);
-                    if (Files.isDirectory(path)) Files.createDirectories(destination);
-                    else Files.copy(path, destination, StandardCopyOption.COPY_ATTRIBUTES);
+                    if (!relative.toString().equals("session.lock")) {
+                        Files.copy(path, target.resolve(relative), StandardCopyOption.COPY_ATTRIBUTES);
+                    }
+                    return FileVisitResult.CONTINUE;
                 }
-            }
+            });
             read(server, target);
         } catch (java.nio.channels.OverlappingFileLockException ex) {
             throw new IOException("Mundo de origem em uso neste servidor.", ex);

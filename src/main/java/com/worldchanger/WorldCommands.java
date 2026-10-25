@@ -46,7 +46,11 @@ public final class WorldCommands {
                                 .then(Commands.argument("type", StringArgumentType.word())
                                         .suggests(TYPES)
                                         .executes(ctx -> create(ctx,
-                                                WorldType.parse(StringArgumentType.getString(ctx, "type")))))))
+                                                WorldType.parse(StringArgumentType.getString(ctx, "type"))))
+                                        .then(Commands.argument("seed", com.mojang.brigadier.arguments.LongArgumentType.longArg())
+                                                .executes(ctx -> create(ctx,
+                                                        WorldType.parse(StringArgumentType.getString(ctx, "type")),
+                                                        com.mojang.brigadier.arguments.LongArgumentType.getLong(ctx, "seed")))))))
                 .then(Commands.literal("import")
                         .requires(WorldPermissions::canImport)
                         .then(Commands.argument("name", StringArgumentType.word())
@@ -99,9 +103,13 @@ public final class WorldCommands {
     }
 
     private static int create(CommandContext<CommandSourceStack> ctx, WorldType type) {
+        return create(ctx, type, net.minecraft.util.RandomSource.create().nextLong());
+    }
+
+    private static int create(CommandContext<CommandSourceStack> ctx, WorldType type, long seed) {
         String name = StringArgumentType.getString(ctx, "name");
         try {
-            WorldManager.create(ctx.getSource().getServer(), name, type);
+            WorldManager.create(ctx.getSource().getServer(), name, type, seed);
             ctx.getSource().sendSuccess(() -> Component.literal(
                     "Mundo '" + name + "' criado (" + type.name().toLowerCase() + "). Use /wc switch " + name), true);
             return 1;
@@ -211,7 +219,7 @@ public final class WorldCommands {
         sendLine(source, "/wc info [mundo]", "mostra detalhes", ChatFormatting.WHITE);
         sendLine(source, "/wc setspawn <mundo> <x> <y> <z>", "define o spawn", ChatFormatting.WHITE);
         sendLine(source, "/wc switch <mundo>", "troca de mundo", ChatFormatting.WHITE);
-        sendLine(source, "/wc create <nome> [tipo]", "cria um mundo (op)", ChatFormatting.WHITE);
+        sendLine(source, "/wc create <nome> [tipo] [seed]", "cria um mundo (op)", ChatFormatting.WHITE);
         sendLine(source, "/wc import <nome>", "importa de worlds/<nome> (op)", ChatFormatting.WHITE);
         sendLine(source, "/wc delete <mundo>", "solicita exclusao (op)", ChatFormatting.WHITE);
         sendLine(source, "/wc confirm", "confirma a exclusao em ate 15 segundos", ChatFormatting.WHITE);
@@ -263,6 +271,7 @@ public final class WorldCommands {
         sendHeader(source, "Informações do mundo");
         sendLine(source, "Nome", name, ChatFormatting.AQUA);
         sendLine(source, "Tipo", type, ChatFormatting.GREEN);
+        if (source.hasPermission(2)) sendLine(source, "Seed", Long.toString(level.getSeed()), ChatFormatting.YELLOW);
         sendLine(source, "Dimensão", level.dimension().location().toString(), ChatFormatting.LIGHT_PURPLE);
         sendLine(source, "Spawn", spawn.getX() + ", " + spawn.getY() + ", " + spawn.getZ(), ChatFormatting.YELLOW);
         sendLine(source, "Jogadores", Integer.toString(level.players().size()), ChatFormatting.WHITE);

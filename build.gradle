@@ -45,6 +45,27 @@ neoForge {
 
 sourceSets.main.resources.srcDir 'src/generated/resources'
 
+// Optional integration harness, excluded from the distributed mod.
+sourceSets.test.compileClasspath += sourceSets.main.compileClasspath
+sourceSets.test.runtimeClasspath += sourceSets.main.runtimeClasspath
+if (providers.gradleProperty('integrationTests').isPresent()) {
+    neoForge.mods.worldchanger.sourceSet sourceSets.test
+    neoForge.runs {
+        integrationServer {
+            server()
+            gameDirectory = file('build/integration-server')
+            programArgument '--nogui'
+            systemProperty 'worldchanger.integrationTests', 'true'
+        }
+    }
+    tasks.named('runIntegrationServer') {
+        doLast {
+            def failures = fileTree('build/integration-server') { include '**/integration-failed.txt' }
+            if (!failures.isEmpty()) throw new GradleException('World Changer integration failed: ' + failures.singleFile.text)
+        }
+    }
+}
+
 tasks.named('processResources', ProcessResources).configure {
     def replaceProperties = [
             mod_id: project.mod_id,

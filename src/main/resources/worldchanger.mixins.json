@@ -5,6 +5,12 @@
   "compatibilityLevel": "JAVA_21",
   "mixins": [
     "ServerLevelMixin",
+    "PlayerAdvancementsMixin",
+    "ServerPlayerMixin",
+    "ServerStatsCounterMixin",
+    "PortalShapeMixin",
+    "EnderEyeItemMixin",
+    "PortalBlockMixin",
     "AttachmentHolderMixin",
     "GameRuleCommandMixin",
     "EntitySelectorMixin",
