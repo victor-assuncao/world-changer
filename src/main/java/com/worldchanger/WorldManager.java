@@ -71,6 +71,7 @@ public final class WorldManager {
         public String name;
         public String type;
         public boolean pendingDeletion;
+        public boolean pendingImport;
         public Entry(String name, String type) { this(name, type, false); }
         public Entry(String name, String type, boolean pendingDeletion) {
             this.name = name;
@@ -119,6 +120,7 @@ public final class WorldManager {
 
     public static void clear() {
         ENTRIES.clear();
+        IMPORT_OPTIONS.clear();
         LEVELS.clear();
         PENDING_DEATH_WORLDS.clear();
         PENDING_DEATH_KEEP_COSMETIC.clear();
@@ -477,6 +479,7 @@ public final class WorldManager {
             List<Entry> list = GSON.fromJson(r, LIST_TYPE);
             if (list == null) return;
             for (Entry e : list) {
+                if (e.pendingImport) e.pendingDeletion = true;
                 if (e.pendingDeletion) {
                     try {
                         deleteWorldFiles(server, e.name);
@@ -490,7 +493,7 @@ public final class WorldManager {
                 }
                 try {
                     ENTRIES.put(e.name, e);
-                    LEVELS.put(e.name, createLevel(server, e.name, WorldType.parse(e.type)));
+                    LEVELS.put(e.name, createRegisteredLevel(server, e));
                     WorldChanger.LOGGER.info("Mundo '{}' carregado ({})", e.name, e.type);
                 } catch (Exception ex) {
                     ENTRIES.remove(e.name);
@@ -516,16 +519,82 @@ public final class WorldManager {
     }
 
     public static void create(MinecraftServer server, String name, WorldType type) {
-        if (!name.matches("[a-z0-9_]{1,32}")) {
-            throw new IllegalArgumentException("Nome invalido: use apenas letras minusculas, numeros e _ (max 32).");
+        if (!name.matches("[a-z0-9_-]{1,32}")) {
+            throw new IllegalArgumentException("Nome invalido: use apenas letras minusculas, numeros, _ e - (max 32).");
         }
-        if (name.equals("overworld") || ENTRIES.containsKey(name)) {
+        if (name.equals("overworld") || ENTRIES.containsKey(name) || Files.exists(importedPath(server, name))) {
             throw new IllegalArgumentException("Ja existe um mundo com esse nome ou a exclusao anterior ainda esta pendente.");
         }
         ServerLevel level = createLevel(server, name, type);
         ENTRIES.put(name, new Entry(name, type.name()));
         LEVELS.put(name, level);
         saveAll(server);
+    }
+
+    private static Path importedPath(MinecraftServer server, String name) {
+        return server.storageSource.getDimensionPath(ResourceKey.create(Registries.DIMENSION,
+                ResourceLocation.fromNamespaceAndPath(WorldChanger.MOD_ID, name)));
+    }
+
+    private static ServerLevel createRegisteredLevel(MinecraftServer server, Entry entry) throws IOException {
+        if (!entry.name.matches("[a-z0-9_-]{1,32}")) throw new IOException("Nome de mundo invalido.");
+        return "IMPORTED".equals(entry.type)
+                ? createLevel(server, entry.name, WorldType.NORMAL, WorldImport.read(server, importedPath(server, entry.name)))
+                : createLevel(server, entry.name, WorldType.parse(entry.type));
+    }
+
+    public static net.minecraft.world.level.levelgen.WorldOptions importedOptions(ServerLevel level) {
+        var constructing = WorldImport.CONSTRUCTING.get();
+        if (constructing != null) return constructing;
+        return IMPORT_OPTIONS.get(level.dimension().location().toString());
+    }
+
+    private static final Map<String, net.minecraft.world.level.levelgen.WorldOptions> IMPORT_OPTIONS = new LinkedHashMap<>();
+
+    public static void importWorld(MinecraftServer server, String name) throws IOException {
+        if (!name.matches("[a-z0-9_-]{1,32}"))
+            throw new IOException("Nome invalido: use letras minusculas, numeros, _ e - (max 32).");
+        if (name.equals("overworld") || ENTRIES.containsKey(name))
+            throw new IOException("Mundo ja registrado ou com limpeza pendente: " + name);
+        Path target = importedPath(server, name).toAbsolutePath().normalize();
+        Path metadata = worldStateFile(server, name).getParent();
+        Path real = WorldImport.source(server, name);
+        if (target.startsWith(real) || real.startsWith(target) || Files.exists(target) || Files.exists(metadata))
+            throw new IOException("Conflito de pastas: origem e destino devem ser independentes e destino deve estar vazio.");
+        WorldImport.read(server, real);
+        Entry entry = new Entry(name, "IMPORTED");
+        entry.pendingImport = true;
+        List<Entry> transaction = new ArrayList<>(ENTRIES.values());
+        transaction.add(entry);
+        writeEntriesAtomically(server, transaction);
+        ENTRIES.put(name, entry);
+        try {
+            WorldImport.copy(server, real, target);
+            ServerLevel level = createRegisteredLevel(server, entry);
+            LEVELS.put(name, level);
+            entry.pendingImport = false;
+            writeEntriesAtomically(server, ENTRIES.values());
+            saveWorldState(server, name, level);
+        } catch (Exception failure) {
+            entry.pendingImport = true;
+            ServerLevel level = LEVELS.remove(name);
+            if (level == null) level = server.levels.get(ResourceKey.create(Registries.DIMENSION,
+                    ResourceLocation.fromNamespaceAndPath(WorldChanger.MOD_ID, name)));
+            try {
+                if (level != null) {
+                    server.levels.remove(level.dimension());
+                    server.markWorldsDirty();
+                    NeoForge.EVENT_BUS.post(new LevelEvent.Unload(level));
+                    level.close();
+                }
+                deleteWorldFiles(server, name);
+                transaction.remove(entry);
+                writeEntriesAtomically(server, transaction);
+                ENTRIES.remove(name);
+            } catch (Exception cleanup) { failure.addSuppressed(cleanup); }
+            throw new IOException("Importacao cancelada: " + failure.getMessage()
+                    + ". Se houver limpeza pendente, reinicie o servidor antes de repetir.", failure);
+        }
     }
 
     /** Descarrega um mundo e tenta remover seus arquivos; arquivos bloqueados ficam pendentes para o proximo inicio. */
@@ -538,7 +607,7 @@ public final class WorldManager {
         if (entry == null || level == null) {
             throw new IllegalArgumentException("Mundo '" + name + "' nao existe.");
         }
-        if (!name.matches("[a-z0-9_]{1,32}")) {
+        if (!name.matches("[a-z0-9_-]{1,32}")) {
             throw new IllegalArgumentException("O nome registrado para este mundo e invalido; exclusao cancelada.");
         }
         if (!level.players().isEmpty()) {
@@ -581,7 +650,7 @@ public final class WorldManager {
                 if (previousPlayerData != null) {
                     writeBytesAtomically(lastWorldFile(server), previousPlayerData);
                 }
-                ServerLevel restored = createLevel(server, name, WorldType.parse(entry.type));
+                ServerLevel restored = createRegisteredLevel(server, entry);
                 LEVELS.put(name, restored);
             } catch (Exception rollbackFailure) {
                 WorldChanger.LOGGER.error("Falha ao restaurar o mundo '{}' apos uma exclusao incompleta", name,
@@ -611,7 +680,7 @@ public final class WorldManager {
     }
 
     private static void deleteWorldFiles(MinecraftServer server, String name) throws IOException {
-        if (name == null || !name.matches("[a-z0-9_]{1,32}")) {
+        if (name == null || !name.matches("[a-z0-9_-]{1,32}")) {
             throw new IOException("Nome invalido na fila de exclusao pendente.");
         }
         Path root = server.getWorldPath(LevelResource.ROOT).toAbsolutePath().normalize();
@@ -700,6 +769,10 @@ public final class WorldManager {
 
     /** Cria e registra um ServerLevel novo no servidor em execucao. */
     private static ServerLevel createLevel(MinecraftServer server, String name, WorldType type) {
+        return createLevel(server, name, type, null);
+    }
+
+    private static ServerLevel createLevel(MinecraftServer server, String name, WorldType type, WorldImport.Settings imported) {
         ResourceKey<Level> key = ResourceKey.create(Registries.DIMENSION,
                 ResourceLocation.fromNamespaceAndPath(WorldChanger.MOD_ID, name));
         ServerLevel overworld = server.overworld();
@@ -709,32 +782,56 @@ public final class WorldManager {
         // Para o tipo NORMAL, reutilizamos a mesma configuracao de geracao do
         // overworld vanilla. Isso evita divergir de futuras alteracoes do
         // preset vanilla (biomas, ruido e estruturas).
-        LevelStem stem = new LevelStem(dimType, type.createGenerator(server));
+        LevelStem stem = imported == null ? new LevelStem(dimType, type.createGenerator(server)) : imported.stem();
 
         // Em 1.21.1 GameRules nao recebe FeatureFlagSet no construtor.
         // Cada mundo inicia com uma instancia propria dos valores padrao.
         GameRules rules = new GameRules();
         WorldLevelData data = new WorldLevelData(server.getWorldData(), server.getWorldData().overworldData(), rules);
+        if (imported != null) {
+            CompoundTag original = imported.data();
+            data.setSpawn(new BlockPos(original.getInt("SpawnX"), original.getInt("SpawnY"), original.getInt("SpawnZ")), original.getFloat("SpawnAngle"));
+            data.setGameTime(original.getLong("Time"));
+            data.setDayTime(original.getLong("DayTime"));
+            data.setClearWeatherTime(original.getInt("clearWeatherTime"));
+            data.setRainTime(original.getInt("rainTime"));
+            data.setThunderTime(original.getInt("thunderTime"));
+            data.setRaining(original.getBoolean("raining"));
+            data.setThundering(original.getBoolean("thundering"));
+            data.getGameRules().assignFrom(new GameRules(new Dynamic<>(NbtOps.INSTANCE, original.get("GameRules"))), server);
+        }
         loadWorldState(server, name, data);
 
-        long seed = server.getWorldData().worldGenOptions().seed();
+        long seed = imported == null ? server.getWorldData().worldGenOptions().seed() : imported.options().seed();
         List<CustomSpawner> spawners = type == WorldType.NORMAL
                 ? ImmutableList.of(new PhantomSpawner(), new PatrolSpawner(), new CatSpawner(),
                         new VillageSiege(), new WanderingTraderSpawner(data))
                 : ImmutableList.of();
 
-        ServerLevel level = new ServerLevel(server, Util.backgroundExecutor(), server.storageSource, data, key, stem,
+        ServerLevel level;
+        if (imported != null) WorldImport.CONSTRUCTING.set(imported.options());
+        try {
+        level = new ServerLevel(server, Util.backgroundExecutor(), server.storageSource, data, key, stem,
                 new NoopListener(), false, BiomeManager.obfuscateSeed(seed), spawners, true,
-                overworld.getRandomSequences());
+                imported == null ? overworld.getRandomSequences() : null);
+        } finally { WorldImport.CONSTRUCTING.remove(); }
 
+        if (imported != null) IMPORT_OPTIONS.put(key.location().toString(), imported.options());
         server.levels.put(key, level);
         // MinecraftServer usa um array em cache para percorrer os mundos no
         // tick. Sem invalidar o cache, o level criado em runtime nao recebe
         // ticks de blocos, entidades, iluminacao, tempo e clima.
         server.markWorldsDirty();
-        NeoForge.EVENT_BUS.post(new LevelEvent.Load(level));
-
-        prepareSpawn(level, data, type);
+        try {
+            NeoForge.EVENT_BUS.post(new LevelEvent.Load(level));
+            if (imported == null) prepareSpawn(level, data, type);
+        } catch (RuntimeException failure) {
+            server.levels.remove(key, level);
+            IMPORT_OPTIONS.remove(key.location().toString());
+            server.markWorldsDirty();
+            try { level.close(); } catch (IOException closeFailure) { failure.addSuppressed(closeFailure); }
+            throw failure;
+        }
         return level;
     }
 

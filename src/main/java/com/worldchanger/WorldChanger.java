@@ -33,6 +33,11 @@ public class WorldChanger {
     }
 
     private void onServerStarted(ServerStartedEvent event) {
+        try {
+            WorldImport.directory(event.getServer());
+        } catch (java.io.IOException ex) {
+            LOGGER.error("Nao foi possivel preparar a pasta worlds para importacao", ex);
+        }
         WorldManager.loadAll(event.getServer());
     }
 

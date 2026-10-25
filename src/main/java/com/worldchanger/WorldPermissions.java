@@ -15,6 +15,7 @@ public final class WorldPermissions {
     public static final PermissionNode<Boolean> SWITCH = new PermissionNode<>(
             WorldChanger.MOD_ID, "switch", PermissionTypes.BOOLEAN, (player, uuid, context) -> true);
     public static final PermissionNode<Boolean> CREATE = adminCommand("create");
+    public static final PermissionNode<Boolean> IMPORT = adminCommand("import");
     public static final PermissionNode<Boolean> DELETE = adminCommand("delete");
     public static final PermissionNode<Boolean> LIST = command("list");
     public static final PermissionNode<Boolean> HELP = command("help");
@@ -28,7 +29,7 @@ public final class WorldPermissions {
 
     public static void register() {
         NeoForge.EVENT_BUS.addListener(PermissionGatherEvent.Nodes.class,
-                event -> event.addNodes(SWITCH, CREATE, DELETE, LIST, HELP, INFO, SETSPAWN, WORLD_ACCESS));
+                event -> event.addNodes(SWITCH, CREATE, IMPORT, DELETE, LIST, HELP, INFO, SETSPAWN, WORLD_ACCESS));
     }
 
     public static boolean canSwitch(CommandSourceStack source) {
@@ -36,6 +37,7 @@ public final class WorldPermissions {
     }
 
     public static boolean canCreate(CommandSourceStack source) { return can(source, CREATE); }
+    public static boolean canImport(CommandSourceStack source) { return can(source, IMPORT); }
     public static boolean canDelete(CommandSourceStack source) { return can(source, DELETE); }
     public static boolean canList(CommandSourceStack source) { return can(source, LIST); }
     public static boolean canHelp(CommandSourceStack source) { return can(source, HELP); }

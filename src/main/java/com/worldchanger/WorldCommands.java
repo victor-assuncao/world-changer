@@ -47,6 +47,10 @@ public final class WorldCommands {
                                         .suggests(TYPES)
                                         .executes(ctx -> create(ctx,
                                                 WorldType.parse(StringArgumentType.getString(ctx, "type")))))))
+                .then(Commands.literal("import")
+                        .requires(WorldPermissions::canImport)
+                        .then(Commands.argument("name", StringArgumentType.word())
+                                .executes(WorldCommands::importWorld)))
                 .then(Commands.literal("delete")
                         .requires(WorldPermissions::canDelete)
                         .then(Commands.argument("name", StringArgumentType.word())
@@ -79,6 +83,19 @@ public final class WorldCommands {
                                                         .executes(WorldCommands::setSpawn))))))
                 );
 
+    }
+
+    private static int importWorld(CommandContext<CommandSourceStack> ctx) {
+        try {
+            String name = StringArgumentType.getString(ctx, "name");
+            WorldManager.importWorld(ctx.getSource().getServer(), name);
+            ctx.getSource().sendSuccess(() -> Component.literal("Mundo importado. Use /wc switch " + name), true);
+            return 1;
+        } catch (Exception ex) {
+            WorldChanger.LOGGER.error("Falha na importacao", ex);
+            ctx.getSource().sendFailure(Component.literal(ex.getMessage() == null ? "Falha ao importar; consulte o log." : ex.getMessage()));
+            return 0;
+        }
     }
 
     private static int create(CommandContext<CommandSourceStack> ctx, WorldType type) {
@@ -195,6 +212,7 @@ public final class WorldCommands {
         sendLine(source, "/wc setspawn <mundo> <x> <y> <z>", "define o spawn", ChatFormatting.WHITE);
         sendLine(source, "/wc switch <mundo>", "troca de mundo", ChatFormatting.WHITE);
         sendLine(source, "/wc create <nome> [tipo]", "cria um mundo (op)", ChatFormatting.WHITE);
+        sendLine(source, "/wc import <nome>", "importa de worlds/<nome> (op)", ChatFormatting.WHITE);
         sendLine(source, "/wc delete <mundo>", "solicita exclusao (op)", ChatFormatting.WHITE);
         sendLine(source, "/wc confirm", "confirma a exclusao em ate 15 segundos", ChatFormatting.WHITE);
         sendFooter(source, "Tipos disponíveis: normal, flat e void.");
