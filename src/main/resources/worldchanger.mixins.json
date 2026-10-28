@@ -4,6 +4,7 @@
   "package": "com.worldchanger.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "VanillaCommandsMixin",
     "ServerLevelMixin",
     "PlayerAdvancementsMixin",
     "ServerPlayerMixin",

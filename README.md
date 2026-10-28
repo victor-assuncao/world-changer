@@ -1,79 +1,232 @@
 # World Changer
 
-Mod de servidor para NeoForge 21.1.252 / Minecraft 1.21.1 (Java 21, mappings Mojang). Ele permite criar dimensões adicionais no servidor e alternar entre elas sem instalar conteúdo no cliente.
+**Vários mundos, um só servidor.** Crie um mundo de sobrevivência, um espaço de construções ou um mapa vazio e alterne entre eles sem sair do servidor.
 
-## Funcionalidades atuais
+O World Changer é um mod de servidor para **Minecraft 1.21.1 com NeoForge**. Cada mundo gerenciado pode ter sua própria seed, inventário dos jogadores, conquistas, estatísticas e regras de jogo. Também é possível importar mapas existentes e controlar comandos por mundo usando LuckPerms.
 
-- Criar mundos `normal`, `flat` e `void`, listar e consultar informações.
-- Seed própria e persistente por mundo, com geradores vanilla independentes.
-- Advancements, recompensas de conclusão e estatísticas independentes por mundo World Changer; overworld, Nether e End vanilla mantêm o progresso compartilhado original.
-- Bloquear ativação e uso dos portais do Nether e End nos mundos World Changer, incluindo importados. Olhos do End podem ser colocados nas molduras para decoração.
-- Trocar entre o overworld e os mundos gerenciados pelo mod.
-- Salvar os dados do jogador separadamente por mundo, incluindo inventário e dados de mods armazenados nas attachments do jogador.
-- Manter gamerules por mundo e aplicar contexto de mundo a comandos vanilla cobertos pelo mod.
-- Controlar comandos do próprio mod com a Permission API do NeoForge, compatível com provedores como LuckPerms.
-- Excluir um mundo com confirmação em duas etapas. Se arquivos estiverem bloqueados pelo sistema ou por outro mod, a limpeza é tentada na próxima inicialização.
+| Compatibilidade | Requisito |
+| --- | --- |
+| Minecraft | **1.21.1** |
+| Carregador | **NeoForge 21.1.252 ou superior na linha 21.1** |
+| Java | **21** |
+| Instalação | No servidor; este mod não precisa ser instalado no cliente |
+| LuckPerms | Opcional, para configurar permissões por jogador ou grupo |
+| Licença | [MIT](LICENSE) |
 
-Consulte [TODO.md](TODO.md) para funcionalidades planejadas. Como o mod manipula mundos e dados de jogadores, faça backup do servidor antes de testar alterações ou exclusões de mundos.
+> Outros mods do seu servidor podem exigir instalação no cliente. O World Changer não substitui essas dependências.
 
-## Seeds, conquistas e estatísticas por mundo
+## O que você pode fazer
 
-```text
+- **Criar mundos** normais, planos ou vazios, com seed opcional.
+- **Importar mapas** existentes sem mover ou modificar a pasta de origem.
+- **Trocar de mundo** por comando e retornar ao overworld principal.
+- **Separar o progresso dos jogadores:** inventário, experiência, modo de jogo, conquistas e estatísticas são restaurados ao voltar a cada mundo gerenciado.
+- **Configurar regras por mundo**, incluindo gamerules, spawn, horário e clima.
+- **Liberar comandos sem OP**, com permissões individuais e contexto de mundo no LuckPerms.
+
+## Instalação
+
+1. Prepare um servidor **NeoForge para Minecraft 1.21.1**, com Java 21.
+2. Pare o servidor e coloque `worldchanger-1.0.0.jar` na pasta `mods`.
+3. Se estiver atualizando, remova o JAR antigo do World Changer para manter apenas uma versão instalada.
+4. Inicie o servidor e use `/wc help` para consultar os comandos.
+
+Faça um backup do save antes de instalar ou atualizar o mod e antes de excluir mundos. Na instalação padrão, comandos administrativos exigem **OP nível 2**; jogadores podem consultar a ajuda, listar mundos e trocar de mundo.
+
+## Primeiros passos
+
+Como administrador, crie seus mundos:
+
+```mcfunction
 /wc create aventura normal 123456
-/wc create construcoes flat -42
+/wc create construcoes flat
 /wc create vazio void
-/wc info aventura
 ```
 
-A seed numérica é opcional: sem ela, o mod sorteia uma seed de 64 bits e a registra em `worldchanger/worlds.json` antes de gerar chunks. `/wc info` mostra a seed para OP nível 2. Mundos antigos sem seed registrada recebem a seed que já utilizavam, preservando a continuidade do terreno. Mundos importados continuam usando as opções do seu `level.dat`. O tipo `normal` usa uma instância própria do gerador vanilla de overworld; `flat` mantém as camadas padrão e `void` mantém apenas a plataforma inicial.
+Depois, entre em um deles:
 
-Cada mundo World Changer salva advancements em `worldchanger/<nome>/advancements/<uuid>.json`. Ao entrar em um mundo sem progresso salvo, o jogador começa com conquistas próprias desse mundo. Progresso global antigo permanece na pasta vanilla `advancements/` e não é copiado para os mundos personalizados. A troca remove os listeners antigos e sincroniza a tela de conquistas; salvar, desconectar, morrer e reiniciar preserva o progresso do mundo. As três dimensões vanilla continuam compartilhando seu arquivo original. Estatísticas usam arquivos próprios em `worldchanger/<nome>/stats/<uuid>.json`. Ao trocar de mundo, os valores do mundo anterior são removidos do cache do cliente e substituídos pelos do destino. Os dados antigos globais continuam nos arquivos vanilla; não é possível atribuir retroativamente esse histórico a mundos específicos. Não há resgate manual no Minecraft vanilla: recompensas são concedidas ao concluir o advancement, uma vez por mundo.
-
-## Importar um mundo existente
-
-Execute como administrador (permissão `worldchanger.import`, padrão OP nível 2):
-
-```text
-/wc import aeronoia-criativo
-/wc list
+```mcfunction
 /wc switch aventura
 ```
 
-Coloque o save em `worlds/<nome>` na raiz do servidor (ao lado de `server.properties`). No ambiente Gradle deste projeto, use `run/worlds/<nome>`. A pasta `worlds` é criada automaticamente ao iniciar o servidor. Por exemplo, `/wc import aeronoia-criativo` importa exclusivamente `run/worlds/aeronoia-criativo` em desenvolvimento. O comando aceita apenas o nome do mundo, com letras minúsculas, números, `_` e `-` (até 32 caracteres), sem argumento de diretório personalizado.
+Para voltar ao mundo principal:
 
-A pasta deve ser um save completo, com `level.dat` e `session.lock`, fechado pelo servidor de origem, ou um backup consistente feito com ele parado. A importação adquire o lock existente sem escrever na origem; não use uma cópia feita enquanto o servidor de origem escrevia os arquivos. O argumento aceita apenas o nome de uma pasta diretamente dentro de `worlds`; caminhos absolutos, subpastas, `..` e links simbólicos são recusados.
-
-O save precisa estar na mesma versão de dados do Minecraft. Converta versões antigas usando uma cópia antes de importar. Instale previamente os mods que fornecem conteúdo e geração utilizados pelo mundo e os datapacks habilitados no servidor de destino, reiniciando-o para carregar os registros. A lista histórica `fml.LoadingModList` apenas gera avisos para mods ausentes: ela não declara dependências e pode incluir utilitários removidos, como um antigo gerenciador de mundos. A validação dos codecs de geração continua bloqueando referências não resolvidas a geradores, biomas, configurações de ruído e tipos de dimensão. Essa validação não verifica todos os blocos e entidades dos chunks; preserve os mods de conteúdo necessários. Todos os mundos usam os mods, datapacks e registros ativos do mesmo servidor. A lista histórica `DataPacks.Enabled` gera avisos quando os IDs antigos não estão ativos; não exige nomes de arquivo ou cópias idênticas por mundo. Datapacks arquivados na pasta importada não são ativados separadamente. Caso a geração dependa de registros ausentes, instale o datapack correspondente no servidor e reinicie antes de importar. Texturas e shaders seguem os recursos/configurações do cliente e o resource pack do servidor, quando configurado; o World Changer não instala nem força shaders nos clientes. Falhas ao resolver registros ou geradores cancelam a operação, sem substituir o gerador por um preset padrão.
-
-O save é copiado para `dimensions/worldchanger/<nome>`, ignorando as pastas `DIM-1` (Nether) e `DIM1` (End) na raiz e o arquivo `session.lock`. Essas pastas não são percorridas nem copiadas; a origem permanece intacta. Regiões, entidades, POI, estruturas em chunks, dados e datapacks do overworld permanecem na cópia. O mundo acessado por `/wc switch` corresponde ao overworld do save. Outras pastas de dimensões adicionais permanecem nos arquivos copiados, mas não são registradas como destinos separados. A mudança vale para novas importações; cópias já importadas não são alteradas. Seed, gerador, preset flat e opção de estruturas vêm do `level.dat` importado e são relidos a cada inicialização. Spawn, relógio, clima e gamerules são próprios do mundo importado. Dados de jogador do save ficam arquivados; o sistema de inventário por mundo continua sendo o do World Changer.
-
-A importação registra uma transação antes de copiar e só a conclui após carregar o mundo. Em caso de falha, descarrega e remove a cópia. Se a limpeza falhar ou o processo for interrompido, reinicie o servidor: ele remove os arquivos da transação incompleta antes de permitir repetir o nome. A origem nunca é movida ou removida. Mundos já importados que deixarem de carregar por dependências ausentes conservam o registro; restaure as dependências e reinicie.
-
-### Validação manual em servidor de teste
-
-1. Importe um save fechado com construções, entidades e POI; compare os dados após `/wc switch`, salve e reinicie.
-2. Use um save com seed diferente e um flat personalizado; explore chunks novos e compare com a mesma origem. Repita com gerador de mod e datapack.
-3. Tente importar nome duplicado, `level.dat` ausente, versão incompatível, registro de geração ausente e origem aberta: devem falhar com causa explícita. Um mod utilitário ou datapack de receitas apenas no histórico deve gerar aviso, usando os recursos ativos compartilhados.
-4. Interrompa o processo durante a cópia; reinicie e repita a importação após a limpeza. Compare a origem com seu backup para confirmar que permaneceu intacta.
-
-## Compilar
-
-Para usar `runServer` em desenvolvimento, mantenha `run/mods` sem cópias do próprio World Changer: o Gradle já carrega o código de `src/main`. Para instalar em outro servidor, substitua o JAR anterior pelo novo e reinicie completamente o servidor; a árvore de comandos e os mixins são carregados na inicialização.
-
-Use JDK 21 e importe este diretório como projeto Gradle no IntelliJ IDEA. O Gradle fará o download do NeoForge e das dependências na primeira sincronização.
-
-Tarefas principais:
-
-- `build` — compila e gera o JAR em `build/libs/`.
-- `runServer` — inicia um servidor local de teste.
-
-### Testes de integração de dados independentes
-
-Execute duas vezes para validar também um reinício real:
-
-```powershell
-.\gradlew.bat --gradle-user-home .gradle-user -PintegrationTests runIntegrationServer
-.\gradlew.bat --gradle-user-home .gradle-user -PintegrationTests runIntegrationServer
+```mcfunction
+/wc switch overworld
 ```
 
-O harness usa exclusivamente `build/integration-server`, exige `eula=true` em seu `eula.txt` e um `server.properties` próprio (recomendado: `server-port=0`, `online-mode=false`, `view-distance=2`). Cria mundos normal, flat e void; compara terreno para seeds iguais/diferentes; verifica progresso, recompensa única e leitura por um novo tracker; testa ativação, entrada e destino dos dois portais em um mundo gerenciado e nas três dimensões vanilla. A segunda execução confirma seeds e progresso persistidos. O log contém `WORLDCHANGER INTEGRATION FIRST PASS` ou `RESTART PASS`; falhas geram `integration-failed.txt` dentro do save. O harness também executa `/wc create flatulencia normal 324792834` e `/wc switch`, verifica teletransportes reais, persistência das estatísticas, recompensas e pacotes enviados ao cliente. O log adicional `WORLDCHANGER COMMAND/CLIENT/STATS FIRST PASS` ou `RESTART PASS` confirma essa cobertura. As classes do harness ficam fora do JAR distribuído.
+Os nomes aceitam letras minúsculas, números, `_` e `-`, com até 32 caracteres. A seed é opcional: quando omitida, o mod sorteia uma para o novo mundo.
+
+### Tipos de mundo
+
+| Tipo | Como é o mundo |
+| --- | --- |
+| `normal` | Geração normal de overworld, com seed própria |
+| `flat` | Mundo superplano com as camadas padrão do Minecraft |
+| `void` | Mundo vazio com uma plataforma inicial |
+
+## Comandos
+
+Use os comandos abaixo no chat. No console do servidor, omita a `/` inicial.
+
+| Comando | O que faz | Acesso padrão |
+| --- | --- | --- |
+| `/wc help` | Mostra a ajuda | Todos |
+| `/wc list` | Lista os mundos | Todos |
+| `/wc info [nome]` | Mostra informações do mundo atual ou indicado | Todos; a seed aparece para OP nível 2 |
+| `/wc switch <nome>` | Entra em um mundo; use `overworld` para voltar | Todos |
+| `/wc create <nome> [tipo] [seed]` | Cria um mundo; o tipo padrão é `normal` | OP nível 2 |
+| `/wc import <nome>` | Importa um mapa da pasta `worlds` | OP nível 2 |
+| `/wc setspawn <mundo> <x> <y> <z>` | Define o spawn de um mundo | OP nível 2 |
+| `/wc delete <nome>` | Solicita a exclusão de um mundo | OP nível 2 |
+| `/wc confirm` | Confirma a exclusão solicitada | OP nível 2 |
+
+Para informar uma seed, informe também o tipo: `/wc create aventura normal 123456`.
+
+### Excluir um mundo
+
+```mcfunction
+/wc delete aventura
+/wc confirm
+```
+
+Execute a confirmação **em até 15 segundos**, usando o mesmo jogador ou console que solicitou a exclusão. A exclusão remove os arquivos do mundo; mantenha um backup se quiser recuperá-lo. Arquivos que estiverem bloqueados podem ter sua remoção concluída na próxima inicialização.
+
+## Importar um mapa existente
+
+1. Pare o servidor de origem ou use um backup consistente feito com ele parado.
+2. Copie o save completo para `worlds/<nome>`, ao lado de `server.properties` no servidor de destino.
+3. Confira se o mapa está na versão de dados do Minecraft 1.21.1 e instale seus mods e datapacks necessários no servidor de destino.
+4. Com o servidor de destino iniciado, importe e entre no mapa:
+
+```mcfunction
+/wc import meu_mapa
+/wc switch meu_mapa
+```
+
+Exemplo de organização antes da importação:
+
+```text
+servidor/
+├── mods/
+├── worlds/
+│   └── meu_mapa/
+│       ├── level.dat
+│       ├── session.lock
+│       └── region/
+└── server.properties
+```
+
+O mod cria uma cópia do **overworld do mapa**; a pasta de origem permanece intacta. O Nether e o End da origem não são importados como mundos separados. A seed, o gerador, o spawn e as regras do mapa são preservados na importação. Os dados de jogador da origem não substituem os perfis por mundo gerenciados pelo World Changer.
+
+Todos os mundos compartilham os mods e datapacks ativos no servidor. Datapacks dentro do save importado não são ativados separadamente. Se a geração depender de conteúdo ausente, instale as dependências e reinicie antes de tentar importar novamente. Texturas e shaders continuam sendo configurados no cliente.
+
+## Permissões com LuckPerms
+
+O LuckPerms é **opcional**. Sem ele, valem os acessos padrão da tabela de comandos e os níveis OP originais dos comandos vanilla.
+
+Para usá-lo, instale a versão NeoForge do LuckPerms, inicie o servidor para gerar a configuração e depois pare-o. Em `config/neoforge-server.toml`, configure:
+
+```toml
+permissionHandler = "luckperms:permission_handler"
+```
+
+Reinicie o servidor após a alteração. Execute os exemplos a seguir como administrador e substitua `Jogador` pelo nome desejado.
+
+### Comandos do World Changer
+
+| Permissão | Ação | Padrão |
+| --- | --- | --- |
+| `worldchanger.help` | Consultar ajuda | Permitido |
+| `worldchanger.list` | Listar mundos | Permitido |
+| `worldchanger.info` | Consultar informações | Permitido |
+| `worldchanger.switch` | Trocar de mundo | Permitido |
+| `worldchanger.world` | Acessar um mundo de destino | Permitido |
+| `worldchanger.create` | Criar mundos | OP nível 2 |
+| `worldchanger.import` | Importar mapas | OP nível 2 |
+| `worldchanger.setspawn` | Definir spawn | OP nível 2 |
+| `worldchanger.delete` | Solicitar e confirmar exclusão | OP nível 2 |
+
+Por exemplo, para impedir que um jogador entre em `construcoes`:
+
+```text
+/lp user Jogador permission set worldchanger.world false world=worldchanger:construcoes
+```
+
+### Liberar gamemode em apenas um mundo
+
+Cada comando vanilla tem seu próprio nó: **`worldchanger.vanilla.<comando>`**. Exemplos: `worldchanger.vanilla.gamemode`, `worldchanger.vanilla.give` e `worldchanger.vanilla.gamerule`.
+
+Para permitir `/gamemode` sem OP somente no mundo chamado `construcoes`:
+
+```text
+/lp user Jogador permission set worldchanger.vanilla.gamemode true world=worldchanger:construcoes
+```
+
+Dentro desse mundo, o jogador poderá usar `/gamemode creative` ou `/gamemode survival`. Essa concessão não libera o comando em outros mundos.
+
+Para um grupo inteiro:
+
+```text
+/lp group construtores permission set worldchanger.vanilla.gamemode true world=worldchanger:construcoes
+/lp user Jogador parent add construtores
+```
+
+Para negar outro comando no mesmo mundo, independentemente da concessão de gamemode:
+
+```text
+/lp group construtores permission set worldchanger.vanilla.give false world=worldchanger:construcoes
+```
+
+### Como escrever o contexto de mundo
+
+O contexto é **`world`**, seguido pelo identificador completo da dimensão. Use exatamente o nome mostrado por `/wc info`.
+
+| Mundo | Contexto |
+| --- | --- |
+| Mundo criado ou importado chamado `construcoes` | `world=worldchanger:construcoes` |
+| Mundo chamado `aventura` | `world=worldchanger:aventura` |
+| Overworld principal | `world=minecraft:overworld` |
+| Nether vanilla | `world=minecraft:the_nether` |
+| End vanilla | `world=minecraft:the_end` |
+
+O nome é o nome do mundo, não o tipo de geração: um mundo do tipo `flat` chamado `construcoes` usa `worldchanger:construcoes`.
+
+- Sem uma permissão configurada, comandos administrativos mantêm seus níveis OP originais.
+- Uma negação explícita bloqueia o comando também para OPs. Herança, grupos e curingas seguem a resolução do LuckPerms.
+- Concessões globais e outras permissões herdadas ainda podem dar acesso em outros mundos; remova-as se quiser restringir o jogador.
+- Aliases usam o nó do destino: `tp` → `teleport`, `xp` → `experience`, `tell`/`w` → `msg` e `tm` → `teammsg`.
+- Seletores como `@s` e `@a` exigem também `neoforge.use_entity_selectors` para jogadores sem OP. Usar o nome do jogador como alvo não exige esse nó.
+- A autorização considera o mundo atual do jogador. `/execute` verifica a permissão do comando de destino; liberar `execute` não contorna uma negação de `give`. A capacidade vanilla de escolher uma dimensão com `execute in` é mantida.
+
+## O que é separado entre os mundos?
+
+Os mundos gerenciados possuem dados próprios dos jogadores, conquistas, recompensas de conquistas e estatísticas. Ao sair e voltar, o mod restaura o progresso daquele mundo. Dados de mods armazenados nas attachments do jogador também são incluídos; isso não significa que todos os sistemas de qualquer mod tenham isolamento próprio.
+
+O **overworld, Nether e End vanilla continuam compartilhando o progresso original**. Não é possível dividir retroativamente as conquistas ou estatísticas antigas entre os mundos novos.
+
+Portais do Nether e do End não funcionam nos mundos World Changer, incluindo mapas importados. Olhos do End ainda podem ser colocados nas molduras como decoração. Para trocar de mundo, use `/wc switch`.
+
+Gamerules dos mundos gerenciados são próprias. Os filtros de alvos dos comandos limitam jogadores a entidades da dimensão usada pela fonte do comando; console e fontes sem jogador mantêm o comportamento global vanilla. A permissão de um comando controla seu acesso, sem transformar todos os comandos vanilla em operações locais: comandos de administração do servidor continuam tendo seu efeito original.
+
+## Dúvidas comuns
+
+**O comando aparece como desconhecido?** Confira a instalação, a permissão e se o servidor foi reiniciado após atualizar o JAR. Comandos sem permissão podem ficar ocultos no Minecraft.
+
+**A permissão por mundo não funcionou?** Use `/wc info` para conferir o identificador exato. Verifique também se o provedor LuckPerms está ativo e se não há uma negação ou concessão herdada afetando o jogador.
+
+**O mundo não aparece?** Use `/wc list`. Para entrar em um mapa colocado em `worlds`, primeiro execute `/wc import <nome>`.
+
+**A importação falhou?** Confira o nome da pasta, os arquivos do save, a versão do Minecraft e as dependências indicadas no console. Se uma importação foi interrompida, reinicie para concluir a limpeza antes de repetir.
+
+## Compilar a partir do código
+
+Com JDK 21 instalado, execute na pasta do projeto:
+
+```powershell
+.\gradlew.bat build
+```
+
+No Linux ou macOS, use `./gradlew build`. O arquivo gerado fica em **`build/libs/worldchanger-1.0.0.jar`**. A primeira compilação precisa de internet para baixar as dependências.
+
+Para desenvolver, `runServer` inicia o servidor local na pasta `run`. Não mantenha uma cópia do próprio World Changer em `run/mods` nesse modo: o Gradle já carrega o código do projeto. Os mundos e configurações desse servidor local não fazem parte do JAR distribuído.

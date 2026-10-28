@@ -28,6 +28,7 @@ public final class WorldPermissions {
     private WorldPermissions() {}
 
     public static void register() {
+        NeoForge.EVENT_BUS.addListener(PermissionGatherEvent.Nodes.class, VanillaPermissions::gather);
         NeoForge.EVENT_BUS.addListener(PermissionGatherEvent.Nodes.class,
                 event -> event.addNodes(SWITCH, CREATE, IMPORT, DELETE, LIST, HELP, INFO, SETSPAWN, WORLD_ACCESS));
     }

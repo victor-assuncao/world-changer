@@ -26,6 +26,7 @@ public class WorldChanger {
         NeoForge.EVENT_BUS.addListener(this::onPlayerLogin);
         NeoForge.EVENT_BUS.addListener(this::onPlayerClone);
         NeoForge.EVENT_BUS.addListener(this::onPlayerRespawn);
+        NeoForge.EVENT_BUS.addListener(this::onPlayerChangedDimension);
     }
 
     private void onRegisterCommands(RegisterCommandsEvent event) {
@@ -49,6 +50,12 @@ public class WorldChanger {
         WorldManager.saveWorldStates(event.getServer());
         for (net.minecraft.server.level.ServerPlayer player : event.getServer().getPlayerList().getPlayers()) {
             WorldManager.savePlayerState(event.getServer(), player);
+        }
+    }
+
+    private void onPlayerChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
+        if (event.getEntity() instanceof net.minecraft.server.level.ServerPlayer player) {
+            player.server.getCommands().sendCommands(player);
         }
     }
 
